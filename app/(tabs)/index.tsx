@@ -6,7 +6,7 @@ import { MedicationCard } from '@/components/alaga/MedicationCard';
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { SectionHeader } from '@/components/alaga/SectionHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
-import { todayDateLabel, todayMedications } from '@/data/mock-medications';
+import { todayMedications } from '@/data/mock-medications';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -16,15 +16,14 @@ export default function HomeScreen() {
   return (
     <ScreenContainer>
       <View style={styles.header}>
-        <Text style={styles.logoText}>Alaga</Text>
+        <Text style={styles.logoText}>Today</Text>
         <View style={styles.settingsButton}>
           <Ionicons name="settings-outline" size={21} color="#5A6B8A" />
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.date}>{todayDateLabel}</Text>
-        <Text style={styles.title}>Today&apos;s Medications</Text>
+        <Text style={styles.greeting}>Hello, User!</Text>
 
         {dueNow.length > 0 ? (
           <View style={styles.sectionWrap}>
@@ -95,16 +94,11 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 100,
   },
-  date: {
-    color: AlagaColors.textMuted,
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  title: {
+  greeting: {
     color: AlagaColors.textPrimary,
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   sectionWrap: {
     marginBottom: 10,
