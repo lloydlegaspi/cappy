@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Medication } from '@/types/medication';
-import type { CreateMedicationInput, MedicationRow } from '@/types/supabase';
+import type { CreateMedicationInput, MedicationRow, ReminderEventRow, UpdateMedicationInput } from '@/types/supabase';
 
 import {
   historyToday,
@@ -40,11 +40,73 @@ function mapMedicationRow(row: MedicationRow): Medication {
     id: row.id,
     name: row.name,
     dosage: row.dosage,
+    purpose: row.purpose,
+    frequency: row.frequency,
     time: row.time_of_day ?? '8:00 AM',
     indication: row.purpose ?? 'Medication reminder',
     status: computeStatus(row.time_of_day),
     image: row.pill_photo_url ?? DEFAULT_PILL_IMAGE,
+    pillPhotoUrl: row.pill_photo_url,
   };
+}
+
+function getStartOfDayIso(date = new Date()): string {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start.toISOString();
+}
+
+function getEndOfDayIso(date = new Date()): string {
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+  return end.toISOString();
+}
+
+async function getLatestEventMapForToday(): Promise<Map<string, ReminderEventRow>> {
+  if (!supabase) {
+    return new Map<string, ReminderEventRow>();
+  }
+
+  const { data, error } = await supabase
+    .from('reminder_events')
+    .select('*')
+    .gte('scheduled_for', getStartOfDayIso())
+    .lte('scheduled_for', getEndOfDayIso())
+    .order('created_at', { ascending: false });
+
+  if (error || !data) {
+    console.error('Error fetching reminder events for medication status:', error);
+    return new Map<string, ReminderEventRow>();
+  }
+
+  const latestByMedication = new Map<string, ReminderEventRow>();
+  for (const event of data) {
+    if (!latestByMedication.has(event.medication_id)) {
+      latestByMedication.set(event.medication_id, event);
+    }
+  }
+
+  return latestByMedication;
+}
+
+function applyEventStatus(medication: Medication, event?: ReminderEventRow): Medication {
+  if (!event) {
+    return medication;
+  }
+
+  if (event.action === 'taken') {
+    return { ...medication, status: 'Taken' };
+  }
+
+  if (event.action === 'missed') {
+    return { ...medication, status: 'Missed' };
+  }
+
+  if (event.action === 'snoozed') {
+    return medication;
+  }
+
+  return medication;
 }
 
 function sortByTimeAscending(medications: Medication[]): Medication[] {
@@ -56,21 +118,53 @@ export async function getMedications(): Promise<Medication[]> {
     return sortByTimeAscending(fallbackMedications);
   }
 
-  const { data, error } = await supabase
-    .from('medications')
-    .select('*')
-    .order('time_of_day', { ascending: true });
+  const [medicationsResult, latestEventsByMedication] = await Promise.all([
+    supabase.from('medications').select('*').order('time_of_day', { ascending: true }),
+    getLatestEventMapForToday(),
+  ]);
+
+  const data = medicationsResult.data;
+  const error = medicationsResult.error;
 
   if (error || !data) {
     console.error('Error fetching medications:', error);
     return sortByTimeAscending(fallbackMedications);
   }
 
-  const mapped = data.map(mapMedicationRow);
+  const mapped = data.map((row) => applyEventStatus(mapMedicationRow(row), latestEventsByMedication.get(row.id)));
   return mapped.length > 0 ? sortByTimeAscending(mapped) : sortByTimeAscending(fallbackMedications);
 }
 
 export async function getMedicationById(id?: string): Promise<Medication | null> {
+  if (!id) {
+    return null;
+  }
+
+  if (!supabase) {
+    return fallbackMedications.find((medication) => medication.id === id) ?? null;
+  }
+
+  const [medicationResult, latestEventsByMedication] = await Promise.all([
+    supabase
+      .from('medications')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle(),
+    getLatestEventMapForToday(),
+  ]);
+
+  const data = medicationResult.data;
+  const error = medicationResult.error;
+
+  if (error || !data) {
+    console.error('Error fetching medication:', error);
+    return fallbackMedications.find((medication) => medication.id === id) ?? null;
+  }
+
+  return applyEventStatus(mapMedicationRow(data), latestEventsByMedication.get(data.id));
+}
+
+export async function getMedicationByIdRaw(id?: string): Promise<Medication | null> {
   if (!id) {
     return null;
   }
@@ -123,6 +217,56 @@ export async function createMedication(input: CreateMedicationInput): Promise<Me
   }
 
   return mapMedicationRow(data);
+}
+
+export async function updateMedicationById(id: string, input: UpdateMedicationInput): Promise<Medication | null> {
+  if (!supabase) {
+    console.warn('Supabase is not configured. Medication update was skipped.');
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('medications')
+    .update({
+      name: input.name,
+      dosage: input.dosage,
+      purpose: input.purpose ?? null,
+      time_of_day: input.time_of_day,
+      frequency: input.frequency ?? null,
+      pill_photo_url: input.pill_photo_url ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    console.error('Error updating medication:', error);
+    return null;
+  }
+
+  return mapMedicationRow(data);
+}
+
+export async function deleteMedicationById(id: string): Promise<boolean> {
+  if (!supabase) {
+    console.warn('Supabase is not configured. Medication delete was skipped.');
+    return false;
+  }
+
+  const { error } = await supabase.from('medications').delete().eq('id', id);
+
+  if (error) {
+    console.error('Error deleting medication:', error);
+    if (error.code === '42501') {
+      console.warn(
+        'Medication delete was blocked by Supabase RLS. Apply the medications_delete_all policy migration in supabase/migrations.',
+      );
+    }
+    return false;
+  }
+
+  return true;
 }
 
 export function getFallbackHistoryMedications(): Medication[] {

@@ -37,6 +37,15 @@ export interface CreateMedicationInput {
   pill_photo_url?: string | null;
 }
 
+export interface UpdateMedicationInput {
+  name: string;
+  dosage: string;
+  purpose?: string | null;
+  time_of_day: string;
+  frequency?: string | null;
+  pill_photo_url?: string | null;
+}
+
 export interface CreateReminderEventInput {
   medicationId: string;
   scheduledFor: string;

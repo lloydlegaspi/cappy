@@ -78,6 +78,13 @@ export default function HomeScreen() {
             </View>
           </View>
         ) : null}
+
+        {!isLoading && dueNow.length === 0 && laterToday.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>All caught up</Text>
+            <Text style={styles.emptyText}>You have no active reminders for today.</Text>
+          </View>
+        ) : null}
       </ScrollView>
     </ScreenContainer>
   );
@@ -135,5 +142,25 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: AlagaColors.border,
     marginVertical: 16,
+  },
+  emptyState: {
+    marginTop: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EDE8E1',
+  },
+  emptyTitle: {
+    color: AlagaColors.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptyText: {
+    color: AlagaColors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

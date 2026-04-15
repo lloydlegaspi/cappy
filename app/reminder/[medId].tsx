@@ -28,6 +28,7 @@ export default function ReminderScreen() {
 
       if (isActive) {
         setMedication(record);
+        setTaken(record?.status === 'Taken');
         setIsLoading(false);
       }
     }
@@ -43,11 +44,18 @@ export default function ReminderScreen() {
     if (!medication || isSubmitting) return;
 
     setIsSubmitting(true);
-    await createReminderEvent({
+    const event = await createReminderEvent({
       medicationId: medication.id,
       scheduledFor: new Date().toISOString(),
       action: 'taken',
     });
+
+    if (!event) {
+      Alert.alert('Action failed', 'Could not record this reminder action.');
+      setIsSubmitting(false);
+      return;
+    }
+
     setTaken(true);
     setIsSubmitting(false);
   };
@@ -56,13 +64,25 @@ export default function ReminderScreen() {
     if (!medication || isSubmitting) return;
 
     setIsSubmitting(true);
-    await createReminderEvent({
+    const event = await createReminderEvent({
       medicationId: medication.id,
       scheduledFor: new Date().toISOString(),
       action: 'snoozed',
     });
+
+    if (!event) {
+      Alert.alert('Action failed', 'Could not snooze this reminder.');
+      setIsSubmitting(false);
+      return;
+    }
+
     Alert.alert('Snoozed', 'Reminder moved by 10 minutes.');
     setIsSubmitting(false);
+  };
+
+  const editMedication = () => {
+    if (!medication) return;
+    router.push(`/add?medId=${medication.id}`);
   };
 
   if (isLoading || !medication) {
@@ -98,6 +118,11 @@ export default function ReminderScreen() {
         </View>
 
         <Text style={styles.helperText}>Take your medicine now, or snooze to be reminded again shortly.</Text>
+
+        <Pressable style={styles.editButton} onPress={editMedication}>
+          <Ionicons name="create-outline" size={18} color={AlagaColors.accentBlue} />
+          <Text style={styles.editButtonText}>Edit Medication</Text>
+        </Pressable>
 
         {!taken ? (
           <View style={styles.actionWrap}>
@@ -202,6 +227,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 22,
     paddingHorizontal: 6,
+  },
+  editButton: {
+    minHeight: 46,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D8E6F4',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 14,
+  },
+  editButtonText: {
+    color: AlagaColors.accentBlue,
+    fontSize: 15,
+    fontWeight: '700',
   },
   actionWrap: {
     gap: 12,

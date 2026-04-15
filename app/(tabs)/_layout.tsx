@@ -23,6 +23,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="meds"
+        options={{
+          title: 'Meds',
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
           title: 'History',

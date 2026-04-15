@@ -44,6 +44,18 @@ function formatLabel(date: Date, relativeLabel?: string): string {
   return relativeLabel ? `${relativeLabel} - ${label}` : label;
 }
 
+function getStartOfDayIso(date: Date): string {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start.toISOString();
+}
+
+function getEndOfDayIso(date: Date): string {
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+  return end.toISOString();
+}
+
 function mapMedicationRow(row: MedicationRow): Medication {
   const time = row.time_of_day ?? '8:00 AM';
 
@@ -80,6 +92,25 @@ export async function createReminderEvent(input: CreateReminderEventInput) {
   if (!supabase) {
     console.warn('Supabase is not configured. Reminder event was not persisted.');
     return null;
+  }
+
+  const eventDate = new Date(input.scheduledFor);
+  const { data: latestTodayEvents, error: latestEventError } = await supabase
+    .from('reminder_events')
+    .select('*')
+    .eq('medication_id', input.medicationId)
+    .gte('scheduled_for', getStartOfDayIso(eventDate))
+    .lte('scheduled_for', getEndOfDayIso(eventDate))
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (latestEventError) {
+    console.error('Error checking existing reminder events:', latestEventError);
+  }
+
+  const latestTodayEvent = latestTodayEvents?.[0];
+  if (latestTodayEvent && latestTodayEvent.action === input.action) {
+    return latestTodayEvent;
   }
 
   const { data, error } = await supabase
@@ -196,9 +227,19 @@ export async function getReminderHistorySections(): Promise<DayHistoryGroup[]> {
     ? yesterdayEvents.map((event) => mergeEventWithMedication(event, medicationMap.get(event.medication_id) ?? null))
     : historyYesterday;
 
-  const groupedByDay = new Map<string, Medication[]>();
+  const latestEventByMedicationAndDay = new Map<string, ReminderEventRow>();
 
   for (const event of events) {
+    const dateKey = formatDateKey(new Date(event.scheduled_for));
+    const key = `${dateKey}:${event.medication_id}`;
+    if (!latestEventByMedicationAndDay.has(key)) {
+      latestEventByMedicationAndDay.set(key, event);
+    }
+  }
+
+  const groupedByDay = new Map<string, Medication[]>();
+
+  for (const event of latestEventByMedicationAndDay.values()) {
     const dateKey = formatDateKey(new Date(event.scheduled_for));
     const list = groupedByDay.get(dateKey) ?? [];
     list.push(mergeEventWithMedication(event, medicationMap.get(event.medication_id) ?? null));

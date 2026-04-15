@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -14,7 +14,7 @@ import {
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { ScreenHeader } from '@/components/alaga/ScreenHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
-import { createMedication } from '@/lib/api/medications';
+import { createMedication, deleteMedicationById, getMedicationByIdRaw, updateMedicationById } from '@/lib/api/medications';
 
 const frequencies = ['Every day', 'Morning only', 'Afternoon only', 'Evening only'] as const;
 const frequencyToSchema: Record<(typeof frequencies)[number], string> = {
@@ -23,15 +23,70 @@ const frequencyToSchema: Record<(typeof frequencies)[number], string> = {
   'Afternoon only': 'Afternoon only',
   'Evening only': 'Evening only',
 };
+const schemaToFrequency: Record<string, (typeof frequencies)[number]> = {
+  'Once daily': 'Every day',
+  'Morning only': 'Morning only',
+  'Afternoon only': 'Afternoon only',
+  'Evening only': 'Evening only',
+};
+
+const defaultPhotoUrl = 'https://images.unsplash.com/photo-1740592756330-adb8c1f5fbe7?w=500&h=500&fit=crop';
 
 export default function AddMedicationScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ medId?: string }>();
+  const isEditMode = Boolean(params.medId);
+
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
+  const [purpose, setPurpose] = useState('');
   const [time, setTime] = useState('8:00 AM');
   const [frequency, setFrequency] = useState<(typeof frequencies)[number]>('Every day');
   const [photoAdded, setPhotoAdded] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [isLoadingForm, setIsLoadingForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const formTitle = useMemo(() => (isEditMode ? 'Edit Medication' : 'Add Medication'), [isEditMode]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMedicationForEdit() {
+      if (!params.medId) {
+        return;
+      }
+
+      setIsLoadingForm(true);
+      const record = await getMedicationByIdRaw(params.medId);
+
+      if (!isActive) {
+        return;
+      }
+
+      if (!record) {
+        Alert.alert('Not found', 'This medication could not be loaded.');
+        router.back();
+        return;
+      }
+
+      setName(record.name);
+      setDosage(record.dosage);
+      setPurpose(record.purpose ?? '');
+      setTime(record.time);
+      setFrequency(schemaToFrequency[record.frequency ?? 'Once daily'] ?? 'Every day');
+      setPhotoUrl(record.pillPhotoUrl ?? null);
+      setPhotoAdded(Boolean(record.pillPhotoUrl));
+      setIsLoadingForm(false);
+    }
+
+    void loadMedicationForEdit();
+
+    return () => {
+      isActive = false;
+    };
+  }, [params.medId, router]);
 
   const saveMedication = async () => {
     if (!name.trim() || !dosage.trim() || !time.trim()) {
@@ -40,34 +95,69 @@ export default function AddMedicationScreen() {
     }
 
     setIsSaving(true);
-    const record = await createMedication({
+    const payload = {
       name: name.trim(),
       dosage: dosage.trim(),
-      purpose: null,
+      purpose: purpose.trim() || null,
       time_of_day: time.trim(),
       frequency: frequencyToSchema[frequency],
-      pill_photo_url: photoAdded
-        ? 'https://images.unsplash.com/photo-1740592756330-adb8c1f5fbe7?w=500&h=500&fit=crop'
-        : null,
-    });
+      pill_photo_url: photoAdded ? photoUrl ?? defaultPhotoUrl : null,
+    };
+
+    const record = isEditMode && params.medId
+      ? await updateMedicationById(params.medId, payload)
+      : await createMedication(payload);
 
     setIsSaving(false);
 
     if (!record) {
-      Alert.alert('Save failed', 'The medication was not saved. Please try again.');
+      Alert.alert('Save failed', 'The medication was not saved. Please verify Supabase policies and try again.');
       return;
     }
 
-    Alert.alert('Medication Saved', 'Your medication has been added to the schedule.', [
+    Alert.alert(isEditMode ? 'Medication Updated' : 'Medication Saved', isEditMode ? 'Changes have been saved.' : 'Your medication has been added to the schedule.', [
       { text: 'OK', onPress: () => router.replace('/') },
+    ]);
+  };
+
+  const confirmDelete = () => {
+    if (!params.medId) {
+      return;
+    }
+
+    Alert.alert('Delete medication?', 'This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setIsDeleting(true);
+          const ok = await deleteMedicationById(params.medId as string);
+          setIsDeleting(false);
+
+          if (!ok) {
+            Alert.alert(
+              'Delete failed',
+              'The medication was not deleted. If RLS is enabled, apply the medications_delete_all policy migration first.',
+            );
+            return;
+          }
+
+          Alert.alert('Deleted', 'Medication removed.', [
+            { text: 'OK', onPress: () => router.replace('/') },
+          ]);
+        },
+      },
     ]);
   };
 
   return (
     <ScreenContainer backgroundColor="#F0F4FB">
-      <ScreenHeader title="Add Medication" />
+      <ScreenHeader title={formTitle} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {isLoadingForm ? <Text style={styles.loadingText}>Loading medication details...</Text> : null}
+
         <FieldLabel text="Medication Name" />
         <TextInput
           value={name}
@@ -84,6 +174,15 @@ export default function AddMedicationScreen() {
           placeholder="e.g. 1 tablet"
           placeholderTextColor="#8AA0BF"
           style={[styles.input, dosage.length > 0 && styles.inputActive]}
+        />
+
+        <FieldLabel text="Purpose" />
+        <TextInput
+          value={purpose}
+          onChangeText={setPurpose}
+          placeholder="e.g. For blood pressure"
+          placeholderTextColor="#8AA0BF"
+          style={[styles.input, purpose.length > 0 && styles.inputActive]}
         />
 
         <FieldLabel text="Time" />
@@ -121,9 +220,15 @@ export default function AddMedicationScreen() {
 
         <Text style={styles.helpText}>A photo makes it easier to recognize your medication.</Text>
 
-        <Pressable style={styles.primaryButton} onPress={saveMedication}>
-          <Text style={styles.primaryButtonText}>{isSaving ? 'Saving...' : 'Save Medication'}</Text>
+        <Pressable style={styles.primaryButton} onPress={saveMedication} disabled={isSaving || isLoadingForm || isDeleting}>
+          <Text style={styles.primaryButtonText}>{isSaving ? 'Saving...' : isEditMode ? 'Update Medication' : 'Save Medication'}</Text>
         </Pressable>
+
+        {isEditMode ? (
+          <Pressable style={styles.deleteButton} onPress={confirmDelete} disabled={isSaving || isLoadingForm || isDeleting}>
+            <Text style={styles.deleteButtonText}>{isDeleting ? 'Deleting...' : 'Delete Medication'}</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
           <Text style={styles.secondaryButtonText}>Cancel</Text>
@@ -142,6 +247,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 24,
+  },
+  loadingText: {
+    color: AlagaColors.textMuted,
+    fontSize: 14,
+    marginBottom: 10,
   },
   label: {
     color: AlagaColors.textPrimary,
@@ -240,6 +350,21 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 20,
+    fontWeight: '700',
+  },
+  deleteButton: {
+    minHeight: 56,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FDECEA',
+    borderWidth: 1,
+    borderColor: '#F6CACA',
+    marginBottom: 12,
+  },
+  deleteButtonText: {
+    color: '#C0392B',
+    fontSize: 18,
     fontWeight: '700',
   },
   secondaryButton: {

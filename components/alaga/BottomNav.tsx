@@ -8,12 +8,14 @@ import { AlagaColors } from '@/constants/alaga-theme';
 const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: 'home-outline',
   add: 'add-outline',
+  meds: 'medkit-outline',
   history: 'time-outline',
 };
 
 const LABELS: Record<string, string> = {
   index: 'Today',
   add: 'Add',
+  meds: 'Meds',
   history: 'History',
 };
 
@@ -69,7 +71,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   tab: {
-    minWidth: 68,
+    minWidth: 56,
     minHeight: 52,
     borderRadius: 14,
     alignItems: 'center',
