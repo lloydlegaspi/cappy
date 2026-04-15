@@ -1,4 +1,4 @@
-export type MedStatus = 'Due Now' | 'Later' | 'Taken' | 'Not Yet' | 'Missed';
+export type MedStatus = 'Due Now' | 'Later' | 'Taken' | 'Snoozed' | 'Pending' | 'Not Yet' | 'Missed';
 
 export interface Medication {
   id: string;

@@ -14,8 +14,15 @@ import {
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { ScreenHeader } from '@/components/alaga/ScreenHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
+import { createMedication } from '@/lib/api/medications';
 
 const frequencies = ['Every day', 'Morning only', 'Afternoon only', 'Evening only'] as const;
+const frequencyToSchema: Record<(typeof frequencies)[number], string> = {
+  'Every day': 'Once daily',
+  'Morning only': 'Morning only',
+  'Afternoon only': 'Afternoon only',
+  'Evening only': 'Evening only',
+};
 
 export default function AddMedicationScreen() {
   const router = useRouter();
@@ -24,8 +31,33 @@ export default function AddMedicationScreen() {
   const [time, setTime] = useState('8:00 AM');
   const [frequency, setFrequency] = useState<(typeof frequencies)[number]>('Every day');
   const [photoAdded, setPhotoAdded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const saveMedication = () => {
+  const saveMedication = async () => {
+    if (!name.trim() || !dosage.trim() || !time.trim()) {
+      Alert.alert('Missing details', 'Please enter the medication name, dosage, and time.');
+      return;
+    }
+
+    setIsSaving(true);
+    const record = await createMedication({
+      name: name.trim(),
+      dosage: dosage.trim(),
+      purpose: null,
+      time_of_day: time.trim(),
+      frequency: frequencyToSchema[frequency],
+      pill_photo_url: photoAdded
+        ? 'https://images.unsplash.com/photo-1740592756330-adb8c1f5fbe7?w=500&h=500&fit=crop'
+        : null,
+    });
+
+    setIsSaving(false);
+
+    if (!record) {
+      Alert.alert('Save failed', 'The medication was not saved. Please try again.');
+      return;
+    }
+
     Alert.alert('Medication Saved', 'Your medication has been added to the schedule.', [
       { text: 'OK', onPress: () => router.replace('/') },
     ]);
@@ -90,7 +122,7 @@ export default function AddMedicationScreen() {
         <Text style={styles.helpText}>A photo makes it easier to recognize your medication.</Text>
 
         <Pressable style={styles.primaryButton} onPress={saveMedication}>
-          <Text style={styles.primaryButtonText}>Save Medication</Text>
+          <Text style={styles.primaryButtonText}>{isSaving ? 'Saving...' : 'Save Medication'}</Text>
         </Pressable>
 
         <Pressable style={styles.secondaryButton} onPress={() => router.back()}>

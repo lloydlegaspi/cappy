@@ -7,6 +7,8 @@ const STATUS_STYLES: Record<MedStatus, { backgroundColor: string; color: string 
   'Due Now': { backgroundColor: AlagaColors.accentBlue, color: '#FFFFFF' },
   Later: { backgroundColor: AlagaColors.accentBlueSoft, color: AlagaColors.accentBlue },
   Taken: { backgroundColor: AlagaColors.successBg, color: AlagaColors.success },
+  Snoozed: { backgroundColor: AlagaColors.accentBlueSoft, color: AlagaColors.accentBlue },
+  Pending: { backgroundColor: '#EEF2F7', color: '#667085' },
   'Not Yet': { backgroundColor: AlagaColors.warningBg, color: AlagaColors.warning },
   Missed: { backgroundColor: AlagaColors.dangerBg, color: AlagaColors.danger },
 };

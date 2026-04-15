@@ -1,27 +1,80 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { ScreenHeader } from '@/components/alaga/ScreenHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
-import { getMedicationById } from '@/data/mock-medications';
+import { createReminderEvent } from '@/lib/api/reminderEvents';
+import { getMedicationById } from '@/lib/api/medications';
+import type { Medication } from '@/types/medication';
 
 export default function ReminderScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ medId?: string }>();
-  const medication = getMedicationById(params.medId);
+  const [medication, setMedication] = useState<Medication | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [taken, setTaken] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const onTakeNow = () => {
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMedication() {
+      setIsLoading(true);
+      const record = await getMedicationById(params.medId);
+
+      if (isActive) {
+        setMedication(record);
+        setIsLoading(false);
+      }
+    }
+
+    void loadMedication();
+
+    return () => {
+      isActive = false;
+    };
+  }, [params.medId]);
+
+  const onTakeNow = async () => {
+    if (!medication || isSubmitting) return;
+
+    setIsSubmitting(true);
+    await createReminderEvent({
+      medicationId: medication.id,
+      scheduledFor: new Date().toISOString(),
+      action: 'taken',
+    });
     setTaken(true);
+    setIsSubmitting(false);
   };
 
-  const onSnooze = () => {
+  const onSnooze = async () => {
+    if (!medication || isSubmitting) return;
+
+    setIsSubmitting(true);
+    await createReminderEvent({
+      medicationId: medication.id,
+      scheduledFor: new Date().toISOString(),
+      action: 'snoozed',
+    });
     Alert.alert('Snoozed', 'Reminder moved by 10 minutes.');
+    setIsSubmitting(false);
   };
+
+  if (isLoading || !medication) {
+    return (
+      <ScreenContainer>
+        <ScreenHeader onBack={() => router.back()} backLabel="Back" />
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingText}>Loading reminder...</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer>
@@ -48,12 +101,12 @@ export default function ReminderScreen() {
 
         {!taken ? (
           <View style={styles.actionWrap}>
-            <Pressable style={styles.takeButton} onPress={onTakeNow}>
+            <Pressable style={styles.takeButton} onPress={onTakeNow} disabled={isSubmitting}>
               <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
-              <Text style={styles.takeButtonText}>Take Now</Text>
+              <Text style={styles.takeButtonText}>{isSubmitting ? 'Recording...' : 'Take Now'}</Text>
             </Pressable>
 
-            <Pressable style={styles.snoozeButton} onPress={onSnooze}>
+            <Pressable style={styles.snoozeButton} onPress={onSnooze} disabled={isSubmitting}>
               <Ionicons name="notifications-off-outline" size={20} color="#8A9BBB" />
               <Text style={styles.snoozeText}>Snooze</Text>
             </Pressable>
@@ -152,6 +205,15 @@ const styles = StyleSheet.create({
   },
   actionWrap: {
     gap: 12,
+  },
+  loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: AlagaColors.textMuted,
+    fontSize: 15,
   },
   takeButton: {
     minHeight: 66,

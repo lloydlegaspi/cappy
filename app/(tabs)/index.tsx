@@ -1,17 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MedicationCard } from '@/components/alaga/MedicationCard';
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { SectionHeader } from '@/components/alaga/SectionHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
-import { todayMedications } from '@/data/mock-medications';
+import { getMedications } from '@/lib/api/medications';
+import type { Medication } from '@/types/medication';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const dueNow = todayMedications.filter((medication) => medication.status === 'Due Now');
-  const laterToday = todayMedications.filter((medication) => medication.status === 'Later');
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadMedications = useCallback(async () => {
+    setIsLoading(true);
+    const records = await getMedications();
+    setMedications(records);
+    setIsLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadMedications();
+    }, [loadMedications]),
+  );
+
+  const dueNow = medications.filter((medication) => medication.status === 'Due Now');
+  const laterToday = medications.filter((medication) => medication.status === 'Later');
 
   return (
     <ScreenContainer>
@@ -24,6 +43,7 @@ export default function HomeScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.greeting}>Hello, User!</Text>
+        {isLoading ? <Text style={styles.loadingText}>Loading medications...</Text> : null}
 
         {dueNow.length > 0 ? (
           <View style={styles.sectionWrap}>
@@ -99,6 +119,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     marginBottom: 20,
+  },
+  loadingText: {
+    color: AlagaColors.textMuted,
+    fontSize: 14,
+    marginBottom: 12,
   },
   sectionWrap: {
     marginBottom: 10,

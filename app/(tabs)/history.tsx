@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MedicationCard } from '@/components/alaga/MedicationCard';
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { SectionHeader } from '@/components/alaga/SectionHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
-import { historyToday, historyYesterday, last7DaysHistory } from '@/data/mock-medications';
+import { getReminderHistorySections } from '@/lib/api/reminderEvents';
+import type { DayHistoryGroup, Medication } from '@/types/medication';
 
 type HistoryFilter = 'today' | 'yesterday' | 'last7';
 
@@ -17,6 +19,25 @@ const filters: { key: HistoryFilter; label: string }[] = [
 
 export default function HistoryScreen() {
   const [filter, setFilter] = useState<HistoryFilter>('today');
+  const [sections, setSections] = useState<DayHistoryGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadHistory = useCallback(async () => {
+    setIsLoading(true);
+    const records = await getReminderHistorySections();
+    setSections(records);
+    setIsLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadHistory();
+    }, [loadHistory]),
+  );
+
+  const todaySection = sections.find((section) => section.id === 'today');
+  const yesterdaySection = sections.find((section) => section.id === 'yesterday');
+  const last7Sections = sections.filter((section) => section.id !== 'today' && section.id !== 'yesterday');
 
   return (
     <ScreenContainer>
@@ -39,19 +60,17 @@ export default function HistoryScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {filter === 'today' ? (
-          <HistoryGroup label="Today - Mon, Apr 13" medications={historyToday} />
-        ) : null}
+        {isLoading ? <Text style={styles.loadingText}>Loading history...</Text> : null}
 
-        {filter === 'yesterday' ? (
-          <HistoryGroup label="Yesterday - Sun, Apr 12" medications={historyYesterday} />
-        ) : null}
+        {filter === 'today' && todaySection ? <HistoryGroup label={todaySection.label} medications={todaySection.medications} /> : null}
+
+        {filter === 'yesterday' && yesterdaySection ? <HistoryGroup label={yesterdaySection.label} medications={yesterdaySection.medications} /> : null}
 
         {filter === 'last7'
-          ? last7DaysHistory.map((group, index) => (
+          ? last7Sections.map((group, index) => (
               <View key={group.id}>
                 <HistoryGroup label={group.label} medications={group.medications} />
-                {index < last7DaysHistory.length - 1 ? <View style={styles.divider} /> : null}
+                {index < last7Sections.length - 1 ? <View style={styles.divider} /> : null}
               </View>
             ))
           : null}
@@ -60,7 +79,7 @@ export default function HistoryScreen() {
   );
 }
 
-function HistoryGroup({ label, medications }: { label: string; medications: typeof historyToday }) {
+function HistoryGroup({ label, medications }: { label: string; medications: Medication[] }) {
   return (
     <View>
       <SectionHeader title={label} />
@@ -116,6 +135,11 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 100,
+  },
+  loadingText: {
+    color: AlagaColors.textMuted,
+    fontSize: 14,
+    marginBottom: 12,
   },
   list: {
     gap: 10,

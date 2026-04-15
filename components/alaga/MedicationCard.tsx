@@ -18,6 +18,10 @@ function statusIconName(status: Medication['status']): keyof typeof Ionicons.gly
   switch (status) {
     case 'Taken':
       return 'checkmark-circle';
+    case 'Snoozed':
+      return 'pause-circle';
+    case 'Pending':
+      return 'ellipse-outline';
     case 'Missed':
       return 'close-circle';
     case 'Not Yet':
@@ -33,6 +37,10 @@ function statusIconColor(status: Medication['status']) {
   switch (status) {
     case 'Taken':
       return AlagaColors.success;
+    case 'Snoozed':
+      return AlagaColors.accentBlue;
+    case 'Pending':
+      return '#667085';
     case 'Missed':
       return AlagaColors.danger;
     case 'Not Yet':
