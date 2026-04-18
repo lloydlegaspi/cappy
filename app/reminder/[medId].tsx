@@ -7,12 +7,14 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { ScreenHeader } from '@/components/alaga/ScreenHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
+import { useFeedback } from '@/components/alaga/FeedbackToast';
 import { createReminderEvent } from '@/lib/api/reminderEvents';
 import { getMedicationById } from '@/lib/api/medications';
 import type { Medication } from '@/types/medication';
 
 export default function ReminderScreen() {
   const router = useRouter();
+  const { showToast } = useFeedback();
   const params = useLocalSearchParams<{ medId?: string }>();
   const [medication, setMedication] = useState<Medication | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,12 +53,14 @@ export default function ReminderScreen() {
     });
 
     if (!event) {
+      showToast('Could not mark as taken', 'error');
       Alert.alert('Action failed', 'Could not record this reminder action.');
       setIsSubmitting(false);
       return;
     }
 
     setTaken(true);
+    showToast('Marked as taken', 'success');
     setIsSubmitting(false);
   };
 
@@ -71,12 +75,14 @@ export default function ReminderScreen() {
     });
 
     if (!event) {
+      showToast('Could not snooze reminder', 'error');
       Alert.alert('Action failed', 'Could not snooze this reminder.');
       setIsSubmitting(false);
       return;
     }
 
     Alert.alert('Snoozed', 'Reminder moved by 10 minutes.');
+    showToast('Reminder snoozed', 'success');
     setIsSubmitting(false);
   };
 

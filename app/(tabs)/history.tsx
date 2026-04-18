@@ -62,6 +62,13 @@ export default function HistoryScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {isLoading ? <Text style={styles.loadingText}>Loading history...</Text> : null}
 
+        {!isLoading && sections.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No reminder history yet</Text>
+            <Text style={styles.emptyText}>Take or snooze a medication to start building history.</Text>
+          </View>
+        ) : null}
+
         {filter === 'today' && todaySection ? <HistoryGroup label={todaySection.label} medications={todaySection.medications} /> : null}
 
         {filter === 'yesterday' && yesterdaySection ? <HistoryGroup label={yesterdaySection.label} medications={yesterdaySection.medications} /> : null}
@@ -140,6 +147,24 @@ const styles = StyleSheet.create({
     color: AlagaColors.textMuted,
     fontSize: 14,
     marginBottom: 12,
+  },
+  emptyState: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EDE8E1',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    color: AlagaColors.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  emptyText: {
+    color: AlagaColors.textMuted,
+    fontSize: 14,
   },
   list: {
     gap: 10,

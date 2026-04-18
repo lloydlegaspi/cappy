@@ -14,7 +14,8 @@ import {
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { ScreenHeader } from '@/components/alaga/ScreenHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
-import { createMedication, deleteMedicationById, getMedicationByIdRaw, updateMedicationById } from '@/lib/api/medications';
+import { createMedication, deleteMedicationByIdWithReason, getMedicationByIdRaw, updateMedicationById } from '@/lib/api/medications';
+import { useFeedback } from '@/components/alaga/FeedbackToast';
 
 const frequencies = ['Every day', 'Morning only', 'Afternoon only', 'Evening only'] as const;
 const frequencyToSchema: Record<(typeof frequencies)[number], string> = {
@@ -34,6 +35,7 @@ const defaultPhotoUrl = 'https://images.unsplash.com/photo-1740592756330-adb8c1f
 
 export default function AddMedicationScreen() {
   const router = useRouter();
+  const { showToast } = useFeedback();
   const params = useLocalSearchParams<{ medId?: string }>();
   const isEditMode = Boolean(params.medId);
 
@@ -111,10 +113,12 @@ export default function AddMedicationScreen() {
     setIsSaving(false);
 
     if (!record) {
+      showToast('Could not save medication', 'error');
       Alert.alert('Save failed', 'The medication was not saved. Please verify Supabase policies and try again.');
       return;
     }
 
+    showToast(isEditMode ? 'Medication updated' : 'Medication added', 'success');
     Alert.alert(isEditMode ? 'Medication Updated' : 'Medication Saved', isEditMode ? 'Changes have been saved.' : 'Your medication has been added to the schedule.', [
       { text: 'OK', onPress: () => router.replace('/') },
     ]);
@@ -131,21 +135,31 @@ export default function AddMedicationScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          setIsDeleting(true);
-          const ok = await deleteMedicationById(params.medId as string);
-          setIsDeleting(false);
+          try {
+            setIsDeleting(true);
+            const result = await deleteMedicationByIdWithReason(params.medId as string);
 
-          if (!ok) {
-            Alert.alert(
-              'Delete failed',
-              'The medication was not deleted. If RLS is enabled, apply the medications_delete_all policy migration first.',
-            );
-            return;
+            if (!result.ok) {
+              showToast('Could not delete medication', 'error');
+              Alert.alert(
+                'Delete failed',
+                result.code === '42501'
+                  ? 'Supabase blocked this delete with row-level security. Run the latest schema migration to apply demo delete policies.'
+                  : result.message ?? 'The medication was not deleted.',
+              );
+              return;
+            }
+
+            showToast('Medication deleted', 'success');
+            Alert.alert('Deleted', 'Medication removed.', [
+              { text: 'OK', onPress: () => router.replace('/') },
+            ]);
+          } catch {
+            showToast('Delete failed', 'error');
+            Alert.alert('Delete failed', 'Unexpected error while deleting medication.');
+          } finally {
+            setIsDeleting(false);
           }
-
-          Alert.alert('Deleted', 'Medication removed.', [
-            { text: 'OK', onPress: () => router.replace('/') },
-          ]);
         },
       },
     ]);
@@ -155,7 +169,10 @@ export default function AddMedicationScreen() {
     <ScreenContainer backgroundColor="#F0F4FB">
       <ScreenHeader title={formTitle} />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled">
         {isLoadingForm ? <Text style={styles.loadingText}>Loading medication details...</Text> : null}
 
         <FieldLabel text="Medication Name" />
@@ -225,7 +242,11 @@ export default function AddMedicationScreen() {
         </Pressable>
 
         {isEditMode ? (
-          <Pressable style={styles.deleteButton} onPress={confirmDelete} disabled={isSaving || isLoadingForm || isDeleting}>
+          <Pressable
+            style={styles.deleteButton}
+            onPress={confirmDelete}
+            hitSlop={8}
+            disabled={isSaving || isLoadingForm || isDeleting}>
             <Text style={styles.deleteButtonText}>{isDeleting ? 'Deleting...' : 'Delete Medication'}</Text>
           </Pressable>
         ) : null}

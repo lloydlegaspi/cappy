@@ -126,13 +126,13 @@ export async function getMedications(): Promise<Medication[]> {
   const data = medicationsResult.data;
   const error = medicationsResult.error;
 
-  if (error || !data) {
+  if (error) {
     console.error('Error fetching medications:', error);
-    return sortByTimeAscending(fallbackMedications);
+    return [];
   }
 
-  const mapped = data.map((row) => applyEventStatus(mapMedicationRow(row), latestEventsByMedication.get(row.id)));
-  return mapped.length > 0 ? sortByTimeAscending(mapped) : sortByTimeAscending(fallbackMedications);
+  const mapped = (data ?? []).map((row) => applyEventStatus(mapMedicationRow(row), latestEventsByMedication.get(row.id)));
+  return sortByTimeAscending(mapped);
 }
 
 export async function getMedicationById(id?: string): Promise<Medication | null> {
@@ -158,7 +158,7 @@ export async function getMedicationById(id?: string): Promise<Medication | null>
 
   if (error || !data) {
     console.error('Error fetching medication:', error);
-    return fallbackMedications.find((medication) => medication.id === id) ?? null;
+    return null;
   }
 
   return applyEventStatus(mapMedicationRow(data), latestEventsByMedication.get(data.id));
@@ -181,7 +181,7 @@ export async function getMedicationByIdRaw(id?: string): Promise<Medication | nu
 
   if (error || !data) {
     console.error('Error fetching medication:', error);
-    return fallbackMedications.find((medication) => medication.id === id) ?? null;
+    return null;
   }
 
   return mapMedicationRow(data);
@@ -210,7 +210,7 @@ export async function createMedication(input: CreateMedicationInput): Promise<Me
     console.error('Error creating medication:', error);
     if (error?.code === '42501') {
       console.warn(
-        'Medication insert was blocked by Supabase RLS. Apply the medications_insert_all policy migration in supabase/migrations.',
+        'Medication insert was blocked by Supabase RLS. Run the latest schema migration to apply demo CRUD policies.',
       );
     }
     return null;
@@ -248,27 +248,34 @@ export async function updateMedicationById(id: string, input: UpdateMedicationIn
   return mapMedicationRow(data);
 }
 
-export async function deleteMedicationById(id: string): Promise<boolean> {
-  if (!supabase) {
-    console.warn('Supabase is not configured. Medication delete was skipped.');
-    return false;
-  }
-
-  const { error } = await supabase.from('medications').delete().eq('id', id);
-
-  if (error) {
-    console.error('Error deleting medication:', error);
-    if (error.code === '42501') {
-      console.warn(
-        'Medication delete was blocked by Supabase RLS. Apply the medications_delete_all policy migration in supabase/migrations.',
-      );
+export async function deleteMedicationByIdWithReason(id: string): Promise<{ ok: boolean; code?: string; message?: string }> {
+  try {
+    if (!supabase) {
+      return { ok: false, message: 'Supabase is not configured.' };
     }
-    return false;
+
+    const { data, error } = await supabase
+      .from('medications')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+      .select('id');
+
+    if (error) {
+      return { ok: false, code: error.code, message: error.message };
+    }
+
+    if (!data || data.length === 0) {
+      return {
+        ok: false,
+        code: 'NO_ROWS_DELETED',
+        message:
+          'No medication row was deleted. This usually means row-level security blocked the operation or the record no longer exists.',
+      };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unexpected delete error.';
+    return { ok: false, message };
   }
-
-  return true;
-}
-
-export function getFallbackHistoryMedications(): Medication[] {
-  return historyToday;
 }

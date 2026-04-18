@@ -2,8 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type { DayHistoryGroup, Medication } from '@/types/medication';
 import type { CreateReminderEventInput, MedicationRow, ReminderEventRow } from '@/types/supabase';
 
-import { historyYesterday, last7DaysHistory } from '@/data/mock-medications';
-import { getFallbackHistoryMedications } from './medications';
+import { last7DaysHistory } from '@/data/mock-medications';
 
 function toStatus(action: ReminderEventRow['action']): Medication['status'] {
   switch (action) {
@@ -179,12 +178,13 @@ export async function getReminderHistorySections(): Promise<DayHistoryGroup[]> {
       .order('scheduled_for', { ascending: false }),
   ]);
 
-  const medications = medicationsResult.data ?? [];
-  const events = eventsResult.data ?? [];
-
   if (medicationsResult.error) {
     console.error('Error fetching medications for history:', medicationsResult.error);
+    return [];
   }
+
+  const medications = medicationsResult.data ?? [];
+  const events = eventsResult.data ?? [];
 
   if (eventsResult.error) {
     console.error('Error fetching reminder events for history:', eventsResult.error);
@@ -195,37 +195,35 @@ export async function getReminderHistorySections(): Promise<DayHistoryGroup[]> {
     medicationMap.set(medication.id, medication as MedicationRow);
   }
 
-  const todaySection: Medication[] = medications.length
-    ? medications.map((medication) => {
-        const latestEvent = events.find(
-          (event) =>
-            event.medication_id === medication.id &&
-            new Date(event.scheduled_for).toDateString() === today.toDateString(),
-        );
+  const todaySection: Medication[] = medications.map((medication) => {
+    const latestEvent = events.find(
+      (event) =>
+        event.medication_id === medication.id &&
+        new Date(event.scheduled_for).toDateString() === today.toDateString(),
+    );
 
-        if (latestEvent) {
-          return mergeEventWithMedication(latestEvent, medicationMap.get(medication.id) ?? null);
-        }
+    if (latestEvent) {
+      return mergeEventWithMedication(latestEvent, medicationMap.get(medication.id) ?? null);
+    }
 
-        return {
-          id: medication.id,
-          name: medication.name,
-          dosage: medication.dosage,
-          time: medication.time_of_day ?? '8:00 AM',
-          indication: medication.purpose ?? 'Medication reminder',
-          status: 'Pending',
-          image: medication.pill_photo_url ?? 'https://images.unsplash.com/photo-1740592756330-adb8c1f5fbe7?w=500&h=500&fit=crop',
-        };
-      })
-    : getFallbackHistoryMedications().map((medication) => medication);
+    return {
+      id: medication.id,
+      name: medication.name,
+      dosage: medication.dosage,
+      time: medication.time_of_day ?? '8:00 AM',
+      indication: medication.purpose ?? 'Medication reminder',
+      status: 'Pending',
+      image: medication.pill_photo_url ?? 'https://images.unsplash.com/photo-1740592756330-adb8c1f5fbe7?w=500&h=500&fit=crop',
+    };
+  });
 
   const yesterdayEvents = events.filter(
     (event) => new Date(event.scheduled_for).toDateString() === yesterday.toDateString(),
   );
 
-  const yesterdaySection: Medication[] = yesterdayEvents.length
-    ? yesterdayEvents.map((event) => mergeEventWithMedication(event, medicationMap.get(event.medication_id) ?? null))
-    : historyYesterday;
+  const yesterdaySection: Medication[] = yesterdayEvents.map((event) =>
+    mergeEventWithMedication(event, medicationMap.get(event.medication_id) ?? null),
+  );
 
   const latestEventByMedicationAndDay = new Map<string, ReminderEventRow>();
 
@@ -263,17 +261,25 @@ export async function getReminderHistorySections(): Promise<DayHistoryGroup[]> {
     }
   }
 
-  return [
-    {
+  const sections: DayHistoryGroup[] = [];
+
+  if (todaySection.length > 0) {
+    sections.push({
       id: 'today',
       label: formatLabel(today, 'Today'),
       medications: todaySection,
-    },
-    {
+    });
+  }
+
+  if (yesterdaySection.length > 0) {
+    sections.push({
       id: 'yesterday',
       label: formatLabel(yesterday, 'Yesterday'),
       medications: yesterdaySection,
-    },
-    ...last7Days.filter((section) => section.id !== 'today' && section.id !== 'yesterday'),
-  ];
+    });
+  }
+
+  sections.push(...last7Days.filter((section) => section.id !== 'today' && section.id !== 'yesterday'));
+
+  return sections;
 }

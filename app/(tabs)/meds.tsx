@@ -5,13 +5,16 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { AlagaColors } from '@/constants/alaga-theme';
-import { deleteMedicationById, getMedications } from '@/lib/api/medications';
+import { deleteMedicationByIdWithReason, getMedications } from '@/lib/api/medications';
+import { useFeedback } from '@/components/alaga/FeedbackToast';
 import type { Medication } from '@/types/medication';
 
 export default function MedicationsScreen() {
   const router = useRouter();
+  const { showToast } = useFeedback();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadMedications = useCallback(async () => {
     setIsLoading(true);
@@ -37,16 +40,36 @@ export default function MedicationsScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          const ok = await deleteMedicationById(medicationId);
-          if (!ok) {
-            Alert.alert(
-              'Delete failed',
-              'Unable to delete this medication. If RLS is enabled, apply the medications_delete_all policy migration first.',
-            );
-            return;
-          }
+          try {
+            setDeletingId(medicationId);
+            const result = await deleteMedicationByIdWithReason(medicationId);
 
-          await loadMedications();
+            if (!result.ok) {
+              showToast(
+                result.code === '42501'
+                  ? 'Could not delete medication'
+                  : 'Delete failed',
+                'error',
+              );
+              Alert.alert(
+                'Delete failed',
+                result.code === '42501'
+                  ? 'Supabase blocked this delete with row-level security. Run the latest schema migration to apply demo delete policies.'
+                  : result.code === 'NO_ROWS_DELETED'
+                    ? 'Delete did not affect any row. This usually means RLS is filtering the row in Supabase.'
+                  : result.message ?? 'Unable to delete this medication.',
+              );
+              return;
+            }
+
+            setMedications((current) => current.filter((item) => item.id !== medicationId));
+            showToast('Medication deleted', 'success');
+          } catch {
+            showToast('Delete failed', 'error');
+            Alert.alert('Delete failed', 'Unexpected error while deleting medication.');
+          } finally {
+            setDeletingId(null);
+          }
         },
       },
     ]);
@@ -85,8 +108,12 @@ export default function MedicationsScreen() {
               <Pressable style={styles.editButton} onPress={() => onEdit(medication.id)}>
                 <Text style={styles.editButtonText}>Edit</Text>
               </Pressable>
-              <Pressable style={styles.deleteButton} onPress={() => onDelete(medication.id)}>
-                <Text style={styles.deleteButtonText}>Delete</Text>
+              <Pressable
+                style={[styles.deleteButton, deletingId === medication.id && styles.deleteButtonDisabled]}
+                onPress={() => onDelete(medication.id)}
+                hitSlop={8}
+                disabled={deletingId === medication.id}>
+                <Text style={styles.deleteButtonText}>{deletingId === medication.id ? 'Deleting...' : 'Delete'}</Text>
               </Pressable>
             </View>
           </View>
@@ -220,5 +247,8 @@ const styles = StyleSheet.create({
     color: '#C0392B',
     fontSize: 15,
     fontWeight: '700',
+  },
+  deleteButtonDisabled: {
+    opacity: 0.65,
   },
 });
