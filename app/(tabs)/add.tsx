@@ -31,6 +31,7 @@ import {
     scheduleMedicationReminderNotifications,
 } from '@/lib/notifications/medicationReminders';
 import { uploadMedicationImage } from '@/lib/storage/medicationImageUpload';
+import type { Medication } from '@/types/medication';
 
 const frequencies = ['Every day', 'Morning only', 'Afternoon only', 'Evening only'] as const;
 const frequencyToSchema: Record<(typeof frequencies)[number], string> = {
@@ -177,41 +178,92 @@ export default function AddMedicationScreen() {
 
     setIsSaving(true);
 
-    let finalPhotoUrl = existingPhotoUrl;
-
-    if (pendingPhotoUri) {
-      setIsUploadingPhoto(true);
-      const uploadedImage = await uploadMedicationImage(pendingPhotoUri);
-      setIsUploadingPhoto(false);
-
-      if (!uploadedImage) {
-        setIsSaving(false);
-        showToast('Could not upload photo', 'error');
-        Alert.alert(
-          'Upload failed',
-          'The photo could not be uploaded. Please try again.',
-        );
-        return;
-      }
-
-      finalPhotoUrl = uploadedImage.publicUrl;
-    } else if (photoRemoved) {
-      finalPhotoUrl = null;
-    }
-
-    const payload = {
+    const medicationPayload = {
       name: name.trim(),
       dosage: dosage.trim(),
       purpose: purpose.trim() || null,
       time_of_day: time.trim(),
       frequency: frequencyToSchema[frequency],
-      pill_photo_url: finalPhotoUrl,
     };
 
-    const record =
-      isEditMode && params.medId
-        ? await updateMedicationById(params.medId, payload)
-        : await createMedication(payload);
+    let finalPhotoUrl = existingPhotoUrl;
+    let record: Medication | null = null;
+
+    if (isEditMode && params.medId) {
+      if (pendingPhotoUri) {
+        setIsUploadingPhoto(true);
+        const uploadedImage = await uploadMedicationImage(pendingPhotoUri, params.medId);
+        setIsUploadingPhoto(false);
+
+        if (!uploadedImage) {
+          setIsSaving(false);
+          showToast('Could not upload photo', 'error');
+          Alert.alert(
+            'Upload failed',
+            'The photo could not be uploaded. Please try again.',
+          );
+          return;
+        }
+
+        finalPhotoUrl = uploadedImage.publicUrl;
+      } else if (photoRemoved) {
+        finalPhotoUrl = null;
+      }
+
+      record = await updateMedicationById(params.medId, {
+        ...medicationPayload,
+        pill_photo_url: finalPhotoUrl,
+      });
+    } else {
+      if (!pendingPhotoUri) {
+        record = await createMedication({
+          ...medicationPayload,
+          pill_photo_url: null,
+        });
+      } else {
+        const createdRecord = await createMedication({
+          ...medicationPayload,
+          pill_photo_url: null,
+        });
+
+        if (!createdRecord) {
+          record = null;
+        } else {
+          setIsUploadingPhoto(true);
+          const uploadedImage = await uploadMedicationImage(pendingPhotoUri, createdRecord.id);
+          setIsUploadingPhoto(false);
+
+          if (!uploadedImage) {
+            const rollbackResult = await deleteMedicationByIdWithReason(createdRecord.id);
+
+            if (!rollbackResult.ok) {
+              console.warn('Rollback after upload failure did not delete medication:', rollbackResult);
+            }
+
+            setIsSaving(false);
+            showToast('Could not upload photo', 'error');
+            Alert.alert(
+              'Upload failed',
+              'The photo could not be uploaded. Please try again.',
+            );
+            return;
+          }
+
+          finalPhotoUrl = uploadedImage.publicUrl;
+
+          const updatedRecord = await updateMedicationById(createdRecord.id, {
+            ...medicationPayload,
+            pill_photo_url: finalPhotoUrl,
+          });
+
+          if (!updatedRecord) {
+            finalPhotoUrl = createdRecord.pillPhotoUrl ?? null;
+          }
+
+          record = updatedRecord ?? createdRecord;
+        }
+      }
+    }
 
     if (!record) {
       setIsSaving(false);
@@ -233,6 +285,8 @@ export default function AddMedicationScreen() {
       showToast(
         notificationResult.reason === 'permission-denied'
           ? 'Medication saved, reminders are off'
+          : notificationResult.reason === 'unsupported-platform'
+            ? 'Medication saved, reminders are available on mobile'
           : 'Medication saved but reminder was not scheduled',
         notificationResult.reason === 'schedule-error' ? 'error' : 'info',
       );
@@ -274,7 +328,7 @@ export default function AddMedicationScreen() {
               Alert.alert(
                 'Delete failed',
                 result.code === '42501'
-                  ? 'Supabase blocked this delete with row-level security. Run the latest schema migration to apply demo delete policies.'
+                  ? 'Supabase blocked this delete with row-level security. Run the latest schema migration to apply per-user ownership policies.'
                   : result.message ?? 'The medication was not deleted.',
               );
               return;

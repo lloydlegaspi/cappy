@@ -7,6 +7,7 @@ export type UserLanguage = 'English' | 'Filipino';
 
 export interface MedicationRow {
   id: string;
+  user_id: string | null;
   name: string;
   dosage: string;
   purpose: string | null;
@@ -19,6 +20,7 @@ export interface MedicationRow {
 
 export interface ReminderEventRow {
   id: string;
+  user_id: string | null;
   medication_id: string;
   scheduled_for: string;
   action: ReminderAction;
@@ -33,6 +35,7 @@ export interface ReminderEventRow {
 
 export interface UserSettingsRow {
   id: string;
+  user_id: string | null;
   display_name: string | null;
   caregiver_name: string | null;
   caregiver_phone: string | null;

@@ -1,3 +1,4 @@
+import { getAuthenticatedUserId } from '@/lib/auth/guestSession';
 import { supabase } from '@/lib/supabase';
 import type { Medication } from '@/types/medication';
 import type { CreateMedicationInput, MedicationRow, ReminderEventRow, UpdateMedicationInput } from '@/types/supabase';
@@ -207,9 +208,17 @@ export async function createMedication(input: CreateMedicationInput): Promise<Me
     return created;
   }
 
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    console.error('Medication create skipped because no authenticated user was found.');
+    return null;
+  }
+
   const { data, error } = await supabase
     .from('medications')
     .insert({
+      user_id: userId,
       name: input.name,
       dosage: input.dosage,
       purpose: input.purpose ?? null,
@@ -224,7 +233,7 @@ export async function createMedication(input: CreateMedicationInput): Promise<Me
     console.error('Error creating medication:', error);
     if (error?.code === '42501') {
       console.warn(
-        'Medication insert was blocked by Supabase RLS. Run the latest schema migration to apply demo CRUD policies.',
+        'Medication insert was blocked by Supabase RLS. Run the latest schema migration to apply per-user ownership policies.',
       );
     }
     return null;

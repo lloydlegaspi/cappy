@@ -17,6 +17,7 @@ import { ScreenContainer } from '@/components/alaga/ScreenContainer';
 import { ScreenHeader } from '@/components/alaga/ScreenHeader';
 import { AlagaColors } from '@/constants/alaga-theme';
 import { getUserSettings, updateUserSettings } from '@/lib/api/settings';
+import { getAuthenticatedUserId, toShortGuestId } from '@/lib/auth/guestSession';
 import {
     DEFAULT_USER_SETTINGS,
     LANGUAGE_OPTIONS,
@@ -45,11 +46,13 @@ export default function SettingsScreen() {
   const [form, setForm] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [guestIdLabel, setGuestIdLabel] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
-    const settings = await getUserSettings();
+    const [settings, userId] = await Promise.all([getUserSettings(), getAuthenticatedUserId()]);
     setForm(settings);
+    setGuestIdLabel(toShortGuestId(userId));
     setIsLoading(false);
   }, []);
 
@@ -172,6 +175,13 @@ export default function SettingsScreen() {
             onChange={(value) => setForm((current) => ({ ...current, language: value as LanguageOption }))}
           />
         </SettingsRow>
+
+        {guestIdLabel ? (
+          <View style={styles.guestCard}>
+            <Text style={styles.guestTitle}>Guest account active</Text>
+            <Text style={styles.guestSubtitle}>ID: {guestIdLabel}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.actions}>
           <Pressable
@@ -364,6 +374,25 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     marginTop: 6,
     gap: 10,
+  },
+  guestCard: {
+    marginTop: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8EEF8',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  guestTitle: {
+    color: AlagaColors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  guestSubtitle: {
+    color: AlagaColors.textMuted,
+    fontSize: 12,
   },
   primaryButton: {
     minHeight: 54,

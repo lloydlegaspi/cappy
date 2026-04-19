@@ -1,3 +1,4 @@
+import { getAuthenticatedUserId } from '@/lib/auth/guestSession';
 import { supabase } from '@/lib/supabase';
 import {
     DEFAULT_USER_SETTINGS,
@@ -7,8 +8,6 @@ import {
     type UserSettings,
 } from '@/types/settings';
 import type { UserSettingsRow } from '@/types/supabase';
-
-const SETTINGS_ROW_ID = 'default';
 
 function normalizeDisplayName(value: string | null | undefined): string {
   const trimmed = value?.trim();
@@ -33,9 +32,12 @@ function mapRowToSettings(row: UserSettingsRow): UserSettings {
   };
 }
 
-function mapSettingsToRow(settings: UserSettings): UserSettingsRow {
+function mapSettingsToRow(settings: UserSettings, userId: string): UserSettingsRow {
+  const rowId = settings.id && settings.id !== 'default' ? settings.id : userId;
+
   return {
-    id: SETTINGS_ROW_ID,
+    id: rowId,
+    user_id: userId,
     display_name: normalizeDisplayName(settings.displayName),
     caregiver_name: normalizeOptionalText(settings.caregiverName),
     caregiver_phone: normalizeOptionalText(settings.caregiverPhone),
@@ -47,24 +49,37 @@ function mapSettingsToRow(settings: UserSettings): UserSettingsRow {
   };
 }
 
+function getDefaultSettingsForUser(userId: string | null): UserSettings {
+  return {
+    ...DEFAULT_USER_SETTINGS,
+    id: userId ?? DEFAULT_USER_SETTINGS.id,
+  };
+}
+
 export async function getUserSettings(): Promise<UserSettings> {
   if (!supabase) {
+    return DEFAULT_USER_SETTINGS;
+  }
+
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
     return DEFAULT_USER_SETTINGS;
   }
 
   const { data, error } = await supabase
     .from('user_settings')
     .select('*')
-    .eq('id', SETTINGS_ROW_ID)
+    .eq('user_id', userId)
     .maybeSingle();
 
   if (error) {
     console.error('Error fetching user settings:', error);
-    return DEFAULT_USER_SETTINGS;
+    return getDefaultSettingsForUser(userId);
   }
 
   if (!data) {
-    return DEFAULT_USER_SETTINGS;
+    return getDefaultSettingsForUser(userId);
   }
 
   return mapRowToSettings(data);
@@ -73,12 +88,21 @@ export async function getUserSettings(): Promise<UserSettings> {
 export async function updateUserSettings(
   next: Partial<Omit<UserSettings, 'id'>>,
 ): Promise<UserSettings> {
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    return {
+      ...DEFAULT_USER_SETTINGS,
+      ...next,
+    };
+  }
+
   const current = await getUserSettings();
 
   const merged: UserSettings = {
     ...current,
     ...next,
-    id: SETTINGS_ROW_ID,
+    id: current.id && current.id !== 'default' ? current.id : userId,
     displayName: normalizeDisplayName(next.displayName ?? current.displayName),
     caregiverName: (next.caregiverName ?? current.caregiverName).trim(),
     caregiverPhone: (next.caregiverPhone ?? current.caregiverPhone).trim(),
@@ -90,7 +114,7 @@ export async function updateUserSettings(
 
   const { data, error } = await supabase
     .from('user_settings')
-    .upsert(mapSettingsToRow(merged), { onConflict: 'id' })
+    .upsert(mapSettingsToRow(merged, userId), { onConflict: 'user_id' })
     .select('*')
     .single();
 

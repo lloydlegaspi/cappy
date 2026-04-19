@@ -1,3 +1,4 @@
+import { getAuthenticatedUserId } from '@/lib/auth/guestSession';
 import { supabase } from '@/lib/supabase';
 import type { DayHistoryGroup, Medication } from '@/types/medication';
 import type { CreateReminderEventInput, MedicationRow, ReminderEventRow } from '@/types/supabase';
@@ -99,10 +100,18 @@ export async function createReminderEvent(input: CreateReminderEventInput) {
     return null;
   }
 
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    console.error('Reminder event create skipped because no authenticated user was found.');
+    return null;
+  }
+
   const eventDate = new Date(input.scheduledFor);
   const { data: latestTodayEvents, error: latestEventError } = await supabase
     .from('reminder_events')
     .select('*')
+    .eq('user_id', userId)
     .eq('medication_id', input.medicationId)
     .gte('scheduled_for', getStartOfDayIso(eventDate))
     .lte('scheduled_for', getEndOfDayIso(eventDate))
@@ -157,6 +166,7 @@ export async function createReminderEvent(input: CreateReminderEventInput) {
         pill_photo_open_count: nextPillPhotoOpenCount,
       })
       .eq('id', latestTodayEvent.id)
+      .eq('user_id', userId)
       .select('*')
       .single();
 
@@ -171,6 +181,7 @@ export async function createReminderEvent(input: CreateReminderEventInput) {
   const { data, error } = await supabase
     .from('reminder_events')
     .insert({
+      user_id: userId,
       medication_id: input.medicationId,
       scheduled_for: input.scheduledFor,
       action: input.action,
@@ -197,11 +208,18 @@ export async function getLatestReminderEventForMedication(medicationId?: string)
     return null;
   }
 
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    return null;
+  }
+
   const today = new Date();
 
   const { data, error } = await supabase
     .from('reminder_events')
     .select('*')
+    .eq('user_id', userId)
     .eq('medication_id', medicationId)
     .gte('scheduled_for', getStartOfDayIso(today))
     .lte('scheduled_for', getEndOfDayIso(today))
@@ -222,9 +240,16 @@ export async function getReminderEvents(startDate: string, endDate: string): Pro
     return [];
   }
 
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    return [];
+  }
+
   const { data, error } = await supabase
     .from('reminder_events')
     .select('*')
+    .eq('user_id', userId)
     .gte('scheduled_for', startDate)
     .lt('scheduled_for', endDate)
     .order('scheduled_for', { ascending: false });
@@ -242,6 +267,12 @@ export async function getReminderHistorySections(): Promise<DayHistoryGroup[]> {
     return last7DaysHistory;
   }
 
+  const userId = await getAuthenticatedUserId();
+
+  if (!userId) {
+    return [];
+  }
+
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
@@ -250,10 +281,11 @@ export async function getReminderHistorySections(): Promise<DayHistoryGroup[]> {
   sevenDaysAgo.setDate(today.getDate() - 6);
 
   const [medicationsResult, eventsResult] = await Promise.all([
-    supabase.from('medications').select('*'),
+    supabase.from('medications').select('*').eq('user_id', userId),
     supabase
       .from('reminder_events')
       .select('*')
+      .eq('user_id', userId)
       .gte('scheduled_for', startOfDay(sevenDaysAgo).toISOString())
       .lte('scheduled_for', endOfDay(today).toISOString())
       .order('scheduled_for', { ascending: false }),

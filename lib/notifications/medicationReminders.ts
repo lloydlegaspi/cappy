@@ -1,16 +1,21 @@
-import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
 import type { Medication } from '@/types/medication';
 
 const REMINDER_KIND = 'medication-reminder';
 const REMINDER_CHANNEL_ID = 'medication-reminders';
+const LOCAL_NOTIFICATIONS_AVAILABLE = Platform.OS === 'ios' || Platform.OS === 'android';
 
 let notificationsConfigured = false;
 
 type ReminderNotificationResult =
   | { ok: true; scheduledCount: number }
-  | { ok: false; reason: 'permission-denied' | 'invalid-time' | 'schedule-error'; message: string };
+  | {
+      ok: false;
+      reason: 'permission-denied' | 'invalid-time' | 'schedule-error' | 'unsupported-platform';
+      message: string;
+    };
 
 function parseMedicationTime(time: string): { hour: number; minute: number } | null {
   const normalized = time.trim();
@@ -47,6 +52,10 @@ function notificationMatchesMedication(
 }
 
 async function ensureNotificationPermission(): Promise<boolean> {
+  if (!LOCAL_NOTIFICATIONS_AVAILABLE) {
+    return false;
+  }
+
   const current = await Notifications.getPermissionsAsync();
 
   if (current.granted || current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
@@ -60,6 +69,11 @@ async function ensureNotificationPermission(): Promise<boolean> {
 
 export async function configureLocalMedicationNotifications() {
   if (notificationsConfigured) {
+    return;
+  }
+
+  if (!LOCAL_NOTIFICATIONS_AVAILABLE) {
+    notificationsConfigured = true;
     return;
   }
 
@@ -85,6 +99,10 @@ export async function configureLocalMedicationNotifications() {
 }
 
 export async function cancelMedicationReminderNotifications(medicationId: string) {
+  if (!LOCAL_NOTIFICATIONS_AVAILABLE) {
+    return;
+  }
+
   await configureLocalMedicationNotifications();
 
   const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
@@ -102,6 +120,14 @@ export async function cancelMedicationReminderNotifications(medicationId: string
 export async function scheduleMedicationReminderNotifications(
   medication: Pick<Medication, 'id' | 'name' | 'time'>,
 ): Promise<ReminderNotificationResult> {
+  if (!LOCAL_NOTIFICATIONS_AVAILABLE) {
+    return {
+      ok: false,
+      reason: 'unsupported-platform',
+      message: 'Medication reminders are available on iOS and Android only.',
+    };
+  }
+
   await configureLocalMedicationNotifications();
 
   const hasPermission = await ensureNotificationPermission();

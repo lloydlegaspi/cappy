@@ -55,7 +55,7 @@ export default function MedicationsScreen() {
           Alert.alert(
             'Delete failed',
             result.code === '42501'
-              ? 'Supabase blocked this delete with row-level security. Run the latest schema migration to apply demo delete policies.'
+              ? 'Supabase blocked this delete with row-level security. Run the latest schema migration to apply per-user ownership policies.'
               : result.code === 'NO_ROWS_DELETED'
                 ? 'Delete did not affect any row. This usually means RLS is filtering the row in Supabase.'
                 : result.message ?? 'Unable to delete this medication.',

@@ -1,3 +1,4 @@
+import { getAuthenticatedUserId } from '@/lib/auth/guestSession';
 import { supabase } from '@/lib/supabase';
 
 const MEDICATION_IMAGE_BUCKET = 'pill-images';
@@ -35,43 +36,37 @@ function resolveMimeType(fileExtension: string): string {
   }
 }
 
-function sanitizeScope(scope: string): string {
-  return scope.replace(/[^a-zA-Z0-9_-]/g, '_');
+function sanitizePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-async function getUserScope(): Promise<string> {
-  if (!supabase) {
-    return 'anonymous';
-  }
-
-  try {
-    const { data, error } = await supabase.auth.getUser();
-
-    if (error || !data.user?.id) {
-      return 'anonymous';
-    }
-
-    return sanitizeScope(data.user.id);
-  } catch {
-    return 'anonymous';
-  }
-}
-
-function buildStoragePath(userScope: string, fileExtension: string): string {
+function buildStoragePath(userId: string, medicationId: string, fileExtension: string): string {
   const timestamp = Date.now();
   const randomSuffix = Math.random().toString(36).slice(2, 10);
-  return `medications/${userScope}/${timestamp}-${randomSuffix}.${fileExtension}`;
+  return `${sanitizePathSegment(userId)}/${sanitizePathSegment(medicationId)}/${timestamp}-${randomSuffix}.${fileExtension}`;
 }
 
-export async function uploadMedicationImage(localUri: string): Promise<UploadedMedicationImage | null> {
+export async function uploadMedicationImage(localUri: string, medicationId: string): Promise<UploadedMedicationImage | null> {
   if (!supabase) {
+    return null;
+  }
+
+  const normalizedMedicationId = medicationId.trim();
+
+  if (!normalizedMedicationId) {
     return null;
   }
 
   try {
     const fileExtension = extractFileExtension(localUri);
-    const userScope = await getUserScope();
-    const storagePath = buildStoragePath(userScope, fileExtension);
+    const userId = await getAuthenticatedUserId();
+
+    if (!userId) {
+      console.error('Medication image upload skipped because no authenticated user was found.');
+      return null;
+    }
+
+    const storagePath = buildStoragePath(userId, normalizedMedicationId, fileExtension);
 
     const imageResponse = await fetch(localUri);
     if (!imageResponse.ok) {
