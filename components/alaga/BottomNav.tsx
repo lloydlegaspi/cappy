@@ -7,25 +7,49 @@ import { AlagaColors } from '@/constants/alaga-theme';
 
 const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   index: 'home-outline',
-  add: 'add-outline',
+  ask: 'chatbubble-ellipses-outline',
   meds: 'medkit-outline',
   history: 'time-outline',
 };
 
 const LABELS: Record<string, string> = {
   index: 'Today',
-  add: 'Add',
+  ask: 'Ask',
   meds: 'Meds',
   history: 'History',
 };
 
+const FAB_HIDDEN_ROUTES = new Set(['ask', 'add']);
+
 export function BottomNav({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const visibleRoutes = state.routes.filter((route) => route.name !== 'add');
+  const activeRouteKey = state.routes[state.index]?.key;
+  const activeRouteName = state.routes[state.index]?.name;
+  const isTodayRoute = activeRouteName === 'index';
+  const addRoute = state.routes.find((route) => route.name === 'add');
+  const shouldShowFab = Boolean(addRoute) && !FAB_HIDDEN_ROUTES.has(activeRouteName ?? '');
+
+  const onAddPress = () => {
+    if (!addRoute) {
+      return;
+    }
+
+    const event = navigation.emit({
+      type: 'tabPress',
+      target: addRoute.key,
+      canPreventDefault: true,
+    });
+
+    if (!event.defaultPrevented) {
+      navigation.navigate(addRoute.name);
+    }
+  };
 
   return (
     <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-      {state.routes.map((route, index) => {
-        const isFocused = state.index === index;
+      {visibleRoutes.map((route) => {
+        const isFocused = activeRouteKey === route.key;
         const { options } = descriptors[route.key];
 
         const onPress = () => {
@@ -44,7 +68,13 @@ export function BottomNav({ state, descriptors, navigation }: BottomTabBarProps)
         const label = options.title ?? LABELS[route.name] ?? route.name;
 
         return (
-          <Pressable key={route.key} onPress={onPress} style={[styles.tab, isFocused && styles.tabActive]}>
+          <Pressable
+            key={route.key}
+            onPress={onPress}
+            style={[styles.tab, isFocused && styles.tabActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isFocused }}
+            accessibilityLabel={`${label} tab`}>
             <Ionicons
               name={icon}
               size={24}
@@ -55,12 +85,28 @@ export function BottomNav({ state, descriptors, navigation }: BottomTabBarProps)
           </Pressable>
         );
       })}
+
+      {shouldShowFab ? (
+        <Pressable
+          onPress={onAddPress}
+          style={[
+            styles.fab,
+            isTodayRoute && styles.fabToday,
+            { bottom: Math.max(insets.bottom, 6) + (isTodayRoute ? 52 : 56) },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Add medication"
+          hitSlop={8}>
+          <Ionicons name="add" size={isTodayRoute ? 26 : 30} color="#FFFFFF" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrapper: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -69,6 +115,7 @@ const styles = StyleSheet.create({
     borderTopColor: AlagaColors.border,
     backgroundColor: AlagaColors.surface,
     paddingTop: 8,
+    paddingHorizontal: 8,
   },
   tab: {
     minWidth: 56,
@@ -91,5 +138,34 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     fontWeight: '700',
     color: AlagaColors.accentBlue,
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AlagaColors.accentBlue,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabToday: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 1.5,
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
   },
 });

@@ -17,21 +17,27 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="add"
-        options={{
-          title: 'Add',
-        }}
-      />
-      <Tabs.Screen
         name="meds"
         options={{
           title: 'Meds',
         }}
       />
       <Tabs.Screen
+        name="ask"
+        options={{
+          title: 'Ask',
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
           title: 'History',
+        }}
+      />
+      <Tabs.Screen
+        name="add"
+        options={{
+          href: null,
         }}
       />
     </Tabs>
