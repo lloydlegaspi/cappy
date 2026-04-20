@@ -156,6 +156,26 @@ npx eas build -p android --profile preview
 
 After build completes, install the APK from the EAS build artifact link.
 
+## EAS Update (JS/asset changes only)
+
+Build profiles are mapped to update channels in `eas.json`:
+
+- `development` profile -> `development` channel
+- `preview` profile -> `preview` channel
+- `production` profile -> `production` channel
+
+Publish an update to a specific channel:
+
+```bash
+npx eas update --platform android --channel development --message "Dev iteration: <short note>"
+npx eas update --platform android --channel preview --message "Demo patch: <short note>"
+npx eas update --platform android --channel production --message "Release patch: <short note>"
+```
+
+Use EAS Update when only JavaScript/TypeScript code or assets changed.
+
+Rebuild with `eas build` when Expo SDK/native dependencies/plugins/app config (permissions, package identifiers, splash/icons, etc.) changes, or when users need a newer binary/runtime.
+
 ## Validate backend demo flows
 
 Run these checks with env vars configured and migrations applied.
